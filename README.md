@@ -350,10 +350,19 @@ def generate_with_citation(query: str, context_chunks: list[dict]) -> str:
 ## Bài Tập Nhóm
 
 > **Sau khi hoàn thành bài cá nhân**, ngồi lại với nhóm để xây dựng **1 trong 2 sản phẩm** sau:
+>
+> ✅ **Sản phẩm đã chọn: RAG Evaluation Pipeline** (Yêu cầu 2)
+>
+> Sử dụng **DeepEval** để evaluate RAG pipeline với 4 metrics chuẩn,
+> so sánh A/B giữa 2 configs, và tạo báo cáo phân tích chi tiết.
+>
+> Xem chi tiết tại [`group_project/README.md`](group_project/README.md).
 
 ---
 
 ### Yêu cầu 1: Sản phẩm nhóm RAG Chatbot
+
+> ❌ **Không chọn.** Nhóm đã chọn sản phẩm 2 (RAG Evaluation Pipeline).
 
 Xây dựng chatbot trả lời câu hỏi về pháp luật ma tuý và tin tức liên quan.
 
@@ -376,11 +385,11 @@ Sử dụng **1 trong 3 framework** sau để evaluate pipeline RAG của nhóm:
 
 #### Framework lựa chọn
 
-| Framework | Cài đặt | Đặc điểm |
-|-----------|---------|-----------|
-| [DeepEval](https://github.com/confident-ai/deepeval) | `pip install deepeval` | Nhiều metric built-in, dễ integrate với pytest |
-| [RAGAS](https://github.com/explodinggradients/ragas) | `pip install ragas` | Chuẩn industry cho RAG eval, 3 trục chính |
-| [TruLens](https://github.com/truera/trulens) | `pip install trulens` | Dashboard UI, feedback functions mạnh |
+| Framework | Cài đặt | Lý do chọn |
+|-----------|---------|------------|
+| **DeepEval** ✅ | `pip install deepeval` | Đã có trong `requirements.txt`, nhiều metrics built-in, hỗ trợ OpenRouter API (OpenAI-compatible), dễ integrate với pytest |
+| ~~RAGAS~~ | `pip install ragas` | Alternative — không chọn |
+| ~~TruLens~~ | `pip install trulens` | Alternative — không chọn |
 
 #### Yêu cầu Evaluation
 
@@ -498,10 +507,10 @@ run_dashboard()
 
 #### Deliverable Evaluation
 
-- [ ] File `group_project/evaluation/golden_dataset.json` — 15+ cặp Q&A
-- [ ] File `group_project/evaluation/eval_pipeline.py` — script chạy evaluation
-- [ ] File `group_project/evaluation/results.md` — bảng điểm + phân tích
-- [ ] So sánh A/B ít nhất 2 configs
+- [x] File `group_project/evaluation/golden_dataset.json` — 16 cặp Q&A pháp luật ma tuý + nghệ sĩ
+- [x] File `group_project/evaluation/eval_pipeline.py` — script evaluation DeepEval đầy đủ
+- [x] File `group_project/evaluation/results.md` — bảng điểm + phân tích worst performers
+- [x] So sánh A/B — Config A (Hybrid+Rerank) vs Config B (Dense-only)
 
 ---
 
@@ -518,7 +527,45 @@ run_dashboard()
 ### Kiến Trúc Hệ Thống
 
 ```
-[Vẽ diagram kiến trúc ở đây]
+┌─────────────────────────────────────────────────────────────┐
+│                   RAG Evaluation Pipeline                    │
+│                                                             │
+│  golden_dataset.json (16 Q&A pairs)                        │
+│         │                                                   │
+│         ▼                                                   │
+│  ┌─────────────────────────────────────┐                   │
+│  │         Config A: Hybrid + Rerank   │                   │
+│  │  Semantic Search ──┐                │                   │
+│  │                    ├── RRF Merge    │                   │
+│  │  BM25 Search    ──┘        │        │                   │
+│  │                     Cross-Encoder   │                   │
+│  │                     Reranking       │                   │
+│  └─────────────────────────────────────┘                   │
+│         │                │                                  │
+│         │   A/B Test     │                                  │
+│         │                │                                  │
+│  ┌─────────────────────────────────────┐                   │
+│  │         Config B: Dense-Only        │                   │
+│  │  Semantic Search (cosine sim only)  │                   │
+│  │  No lexical, no reranking           │                   │
+│  └─────────────────────────────────────┘                   │
+│         │                                                   │
+│         ▼                                                   │
+│  Task 10: generate_with_citation()                         │
+│  (OpenRouter → gpt-4o-mini)                                │
+│         │                                                   │
+│         ▼                                                   │
+│  ┌──────────────────────────────────────┐                  │
+│  │         DeepEval Judge               │                  │
+│  │  • FaithfulnessMetric                │                  │
+│  │  • AnswerRelevancyMetric             │                  │
+│  │  • ContextualRecallMetric            │                  │
+│  │  • ContextualPrecisionMetric         │                  │
+│  └──────────────────────────────────────┘                  │
+│         │                                                   │
+│         ▼                                                   │
+│  results.md (bảng điểm + phân tích worst performers)       │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -530,6 +577,19 @@ run_dashboard()
 | Nguyễn Vũ Trọng | 2A202600960 | Task 1–10 (bài cá nhân) + Thiết lập Eval Pipeline + Golden Dataset | ✅ Hoàn thành |
 | Nguyễn Phương Nam | 2A202600962 | Phân tích kết quả Evaluation + So sánh A/B + Báo cáo results.md | ✅ Hoàn thành |
 | Hồ Tất Bảo Hoàng | 2A202600699 | Hỗ trợ thu thập dữ liệu + Documentation + Review & kiểm thử pipeline | ✅ Hoàn thành |
+
+---
+
+### Configs A/B Test
+
+| | Config A | Config B |
+|---|----------|----------|
+| **Tên** | Hybrid Search + Reranking | Dense-Only |
+| **Semantic Search** | ✅ | ✅ |
+| **BM25 Lexical** | ✅ | ❌ |
+| **RRF Fusion** | ✅ | ❌ |
+| **Cross-Encoder Rerank** | ✅ | ❌ |
+| **PageIndex Fallback** | ✅ | ✅ |
 
 ---
 
