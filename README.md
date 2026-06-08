@@ -527,10 +527,9 @@ run_dashboard()
 
 | Thành viên | MSSV | Nhiệm vụ | Trạng thái |
 |-----------|------|----------|------------|
-| | | | |
-| | | | |
-| | | | |
-| | | | |
+| Nguyễn Vũ Trọng | 2A202600960 | Task 1–10 (bài cá nhân) + Thiết lập Eval Pipeline + Golden Dataset | ✅ Hoàn thành |
+| Nguyễn Phương Nam | 2A202600962 | Phân tích kết quả Evaluation + So sánh A/B + Báo cáo results.md | ✅ Hoàn thành |
+| Hồ Tất Bảo Hoàng | 2A202600699 | Hỗ trợ thu thập dữ liệu + Documentation + Review & kiểm thử pipeline | ✅ Hoàn thành |
 
 ---
 

@@ -32,6 +32,7 @@ def retrieve(
     top_k: int = DEFAULT_TOP_K,
     score_threshold: float = SCORE_THRESHOLD,
     use_reranking: bool = True,
+    use_lexical: bool = True,
 ) -> list[dict]:
     """
     Retrieval pipeline hoàn chỉnh với fallback logic.
@@ -39,7 +40,7 @@ def retrieve(
     Pipeline:
         Query
           ├→ Semantic Search → results_dense
-          ├→ Lexical Search  → results_sparse
+          ├→ Lexical Search  → results_sparse  (bỏ qua nếu use_lexical=False)
           │
           ├→ Merge (RRF) → merged_results
           ├→ Rerank → reranked_results
@@ -52,31 +53,40 @@ def retrieve(
         top_k: Số lượng kết quả cuối cùng
         score_threshold: Ngưỡng điểm tối thiểu cho hybrid results
         use_reranking: Có áp dụng reranking hay không
+        use_lexical: Có dùng lexical search (BM25) hay không.
+                     Nếu False → dense-only mode (chỉ semantic search).
+                     Dùng cho A/B evaluation comparison.
 
     Returns:
         List of {
             'content': str,
             'score': float,
             'metadata': dict,
-            'source': str  # 'hybrid' hoặc 'pageindex'
+            'source': str  # 'hybrid' hoặc 'pageindex' hoặc 'dense'
         }
     """
-    # Step 1: Song song chạy semantic + lexical
+    # Step 1: Chạy semantic search (luôn luôn)
     dense_results = semantic_search(query, top_k=top_k * 2)
-    sparse_results = lexical_search(query, top_k=top_k * 2)
-    
-    # Step 2: Merge bằng RRF
-    merged = rerank_rrf([dense_results, sparse_results], top_k=top_k * 2)
-    for item in merged:
-        item["source"] = "hybrid"
-        
-    # Step 3: Rerank
+
+    if use_lexical:
+        # Hybrid mode: kết hợp semantic + lexical qua RRF
+        sparse_results = lexical_search(query, top_k=top_k * 2)
+        merged = rerank_rrf([dense_results, sparse_results], top_k=top_k * 2)
+        for item in merged:
+            item["source"] = "hybrid"
+    else:
+        # Dense-only mode: chỉ dùng semantic search
+        merged = dense_results[:top_k * 2]
+        for item in merged:
+            item["source"] = "dense"
+
+    # Step 2: Rerank (nếu được bật)
     if use_reranking and merged:
         final_results = rerank(query, merged, top_k=top_k, method=RERANK_METHOD)
     else:
         final_results = merged[:top_k]
-        
-    # Step 4: Check threshold → fallback
+
+    # Step 3: Check threshold → fallback sang PageIndex
     if not final_results or final_results[0]["score"] < score_threshold:
         try:
             fallback = pageindex_search(query, top_k=top_k)
@@ -84,7 +94,7 @@ def retrieve(
                 return fallback
         except Exception as e:
             print(f"  PageIndex fallback not available or failed: {e}")
-            
+
     return final_results[:top_k]
 
 

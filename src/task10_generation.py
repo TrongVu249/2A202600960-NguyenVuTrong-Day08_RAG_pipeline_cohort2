@@ -118,12 +118,17 @@ def format_context(chunks: list[dict]) -> str:
 # GENERATION
 # =============================================================================
 
-def generate_with_citation(query: str, top_k: int = TOP_K) -> dict:
+def generate_with_citation(
+    query: str,
+    top_k: int = TOP_K,
+    use_reranking: bool = True,
+    use_lexical: bool = True,
+) -> dict:
     """
     End-to-end RAG generation có citation.
 
     Pipeline:
-        1. Retrieve relevant chunks
+        1. Retrieve relevant chunks (với config được chỉ định)
         2. Reorder để tránh lost in the middle
         3. Format context với source labels
         4. Build prompt (system + context + query)
@@ -132,16 +137,20 @@ def generate_with_citation(query: str, top_k: int = TOP_K) -> dict:
 
     Args:
         query: Câu hỏi của user
+        top_k: Số chunks đưa vào context
+        use_reranking: Có áp dụng reranking trong retrieval hay không
+        use_lexical: Có dùng lexical search (BM25) hay không.
+                     False → dense-only mode (dùng cho A/B comparison)
 
     Returns:
         {
             'answer': str,           # Câu trả lời có citation
             'sources': list[dict],   # Các chunks đã dùng
-            'retrieval_source': str  # 'hybrid' hoặc 'pageindex'
+            'retrieval_source': str  # 'hybrid' hoặc 'pageindex' hoặc 'dense'
         }
     """
-    # Step 1: Retrieve
-    chunks = retrieve(query, top_k=top_k)
+    # Step 1: Retrieve (forward config params)
+    chunks = retrieve(query, top_k=top_k, use_reranking=use_reranking, use_lexical=use_lexical)
 
     # Step 2: Reorder
     reordered = reorder_for_llm(chunks)
@@ -154,16 +163,16 @@ def generate_with_citation(query: str, top_k: int = TOP_K) -> dict:
 
     # Step 5: Call LLM
     from openai import OpenAI
-    
+
     #api_key = os.getenv("OPENAI_API_KEY", "")
     #    if not api_key or api_key == "sk-xxx":
     #        raise ValueError("OPENAI_API_KEY is not set or invalid in .env")
-    
+
     api_key = os.getenv("OPENROUTER_API_KEY", "")
     if not api_key:
         raise ValueError("OPENROUTER_API_KEY is not set in .env")
-    
-        
+
+
     client = OpenAI(
         api_key=api_key,
         base_url="https://openrouter.ai/api/v1"
