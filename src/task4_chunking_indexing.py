@@ -30,27 +30,35 @@ from pathlib import Path
 
 STANDARDIZED_DIR = Path(__file__).parent.parent / "data" / "standardized"
 
-
 # =============================================================================
 # CONFIGURATION — Giải thích lựa chọn của bạn trong comment
 # =============================================================================
 
-# TODO: Chọn chunking strategy và giải thích vì sao
-CHUNK_SIZE = 500        # Vì sao chọn 500? ...
-CHUNK_OVERLAP = 50      # Vì sao chọn 50? ...
+# Lựa chọn Chunking Strategy:
+# - Chọn RecursiveCharacterTextSplitter để tách text theo cấu trúc phân cấp (đoạn văn, dòng, từ).
+# - CHUNK_SIZE = 500 ký tự (khoảng 100 từ) để đảm bảo chunk chứa đủ ngữ nghĩa không quá dài.
+# - CHUNK_OVERLAP = 50 ký tự giúp giữ lại ngữ cảnh liên kết giữa các chunk liền kề.
+CHUNK_SIZE = 500
+CHUNK_OVERLAP = 50
 CHUNKING_METHOD = "recursive"  # "recursive" | "markdown_header" | "semantic"
 
-# TODO: Chọn embedding model và giải thích
-EMBEDDING_MODEL = "BAAI/bge-m3"  # Vì sao? Multilingual, tốt cho tiếng Việt
-EMBEDDING_DIM = 1024
+# Lựa chọn Embedding Model:
+# - Dùng 'sentence-transformers/all-MiniLM-L6-v2' (384 dimensions) vì model này rất nhẹ,
+#   chạy nhanh trên CPU cục bộ, và đã được tối ưu hóa cho tác vụ vector similarity.
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+EMBEDDING_DIM = 384
 
-# TODO: Chọn vector store
-VECTOR_STORE = "weaviate"  # "weaviate" | "chromadb" | "faiss"
+# Lựa chọn Vector Store:
+# - Sử dụng file-based local database lưu trữ qua pickle do Weaviate Embedded
+#   không được hỗ trợ trên Windows và không có Docker.
+VECTOR_STORE = "pickle"
 
 
 # =============================================================================
 # IMPLEMENTATION
 # =============================================================================
+
+import pickle
 
 def load_documents() -> list[dict]:
     """
@@ -59,17 +67,21 @@ def load_documents() -> list[dict]:
     Returns:
         List of {'content': str, 'metadata': {'source': str, 'type': str}}
     """
-    # TODO: Iterate qua STANDARDIZED_DIR, đọc .md files
-    # documents = []
-    # for md_file in STANDARDIZED_DIR.rglob("*.md"):
-    #     content = md_file.read_text(encoding="utf-8")
-    #     doc_type = "legal" if "legal" in str(md_file) else "news"
-    #     documents.append({
-    #         "content": content,
-    #         "metadata": {"source": md_file.name, "type": doc_type}
-    #     })
-    # return documents
-    raise NotImplementedError("Implement load_documents")
+    documents = []
+    if not STANDARDIZED_DIR.exists():
+        return documents
+        
+    for md_file in STANDARDIZED_DIR.rglob("*.md"):
+        content = md_file.read_text(encoding="utf-8")
+        doc_type = "legal" if "legal" in str(md_file) else "news"
+        documents.append({
+            "content": content,
+            "metadata": {
+                "source": md_file.name,
+                "type": doc_type
+            }
+        })
+    return documents
 
 
 def chunk_documents(documents: list[dict]) -> list[dict]:
@@ -79,26 +91,26 @@ def chunk_documents(documents: list[dict]) -> list[dict]:
     Returns:
         List of {'content': str, 'metadata': dict} — mỗi item là 1 chunk
     """
-    # TODO: Implement chunking
-    #
-    # Ví dụ với RecursiveCharacterTextSplitter:
-    # from langchain_text_splitters import RecursiveCharacterTextSplitter
-    #
-    # splitter = RecursiveCharacterTextSplitter(
-    #     chunk_size=CHUNK_SIZE,
-    #     chunk_overlap=CHUNK_OVERLAP,
-    #     separators=["\n\n", "\n", ". ", " ", ""]
-    # )
-    # chunks = []
-    # for doc in documents:
-    #     splits = splitter.split_text(doc["content"])
-    #     for i, chunk_text in enumerate(splits):
-    #         chunks.append({
-    #             "content": chunk_text,
-    #             "metadata": {**doc["metadata"], "chunk_index": i}
-    #         })
-    # return chunks
-    raise NotImplementedError("Implement chunk_documents")
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
+        separators=["\n\n", "\n", ". ", " ", ""]
+    )
+    chunks = []
+    for doc in documents:
+        splits = splitter.split_text(doc["content"])
+        for i, chunk_text in enumerate(splits):
+            chunks.append({
+                "content": chunk_text,
+                "metadata": {
+                    "source": doc["metadata"]["source"],
+                    "type": doc["metadata"]["type"],
+                    "chunk_index": i
+                }
+            })
+    return chunks
 
 
 def embed_chunks(chunks: list[dict]) -> list[dict]:
@@ -108,51 +120,25 @@ def embed_chunks(chunks: list[dict]) -> list[dict]:
     Returns:
         Mỗi chunk dict được thêm key 'embedding': list[float]
     """
-    # TODO: Implement embedding
-    #
-    # Ví dụ với sentence-transformers:
-    # from sentence_transformers import SentenceTransformer
-    #
-    # model = SentenceTransformer(EMBEDDING_MODEL)
-    # texts = [c["content"] for c in chunks]
-    # embeddings = model.encode(texts, show_progress_bar=True)
-    # for chunk, emb in zip(chunks, embeddings):
-    #     chunk["embedding"] = emb.tolist()
-    # return chunks
-    raise NotImplementedError("Implement embed_chunks")
+    from sentence_transformers import SentenceTransformer
+
+    model = SentenceTransformer(EMBEDDING_MODEL)
+    texts = [c["content"] for c in chunks]
+    embeddings = model.encode(texts, show_progress_bar=True)
+    for chunk, emb in zip(chunks, embeddings):
+        chunk["embedding"] = emb.tolist()
+    return chunks
 
 
 def index_to_vectorstore(chunks: list[dict]):
     """
     Lưu chunks vào vector store đã chọn.
     """
-    # TODO: Implement indexing
-    #
-    # Ví dụ với Weaviate:
-    # import weaviate
-    # from weaviate.classes.config import Configure, Property, DataType
-    #
-    # client = weaviate.connect_to_local()  # hoặc connect_to_weaviate_cloud()
-    #
-    # # Tạo collection
-    # collection = client.collections.create(
-    #     name="DrugLawDocs",
-    #     vectorizer_config=Configure.Vectorizer.none(),
-    #     properties=[
-    #         Property(name="content", data_type=DataType.TEXT),
-    #         Property(name="source", data_type=DataType.TEXT),
-    #         Property(name="doc_type", data_type=DataType.TEXT),
-    #     ]
-    # )
-    #
-    # # Insert chunks
-    # with collection.batch.dynamic() as batch:
-    #     for chunk in chunks:
-    #         batch.add_object(
-    #             properties={"content": chunk["content"], ...},
-    #             vector=chunk["embedding"]
-    #         )
-    raise NotImplementedError("Implement index_to_vectorstore")
+    vectorstore_path = STANDARDIZED_DIR.parent / "vector_store.pkl"
+    # Create directory if it doesn't exist
+    vectorstore_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(vectorstore_path, "wb") as f:
+        pickle.dump(chunks, f)
 
 
 def run_pipeline():
