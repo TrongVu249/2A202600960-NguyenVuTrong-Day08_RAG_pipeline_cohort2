@@ -10,6 +10,34 @@ Yêu cầu:
 """
 
 
+from pathlib import Path
+import pickle
+import numpy as np
+from sentence_transformers import SentenceTransformer
+from .task4_chunking_indexing import EMBEDDING_MODEL
+
+STANDARDIZED_DIR = Path(__file__).parent.parent / "data" / "standardized"
+
+_model = None
+_vector_store = None
+
+def get_model():
+    global _model
+    if _model is None:
+        _model = SentenceTransformer(EMBEDDING_MODEL)
+    return _model
+
+def get_vector_store():
+    global _vector_store
+    if _vector_store is None:
+        vectorstore_path = STANDARDIZED_DIR.parent / "vector_store.pkl"
+        if vectorstore_path.exists():
+            with open(vectorstore_path, "rb") as f:
+                _vector_store = pickle.load(f)
+        else:
+            _vector_store = []
+    return _vector_store
+
 def semantic_search(query: str, top_k: int = 10) -> list[dict]:
     """
     Tìm kiếm ngữ nghĩa sử dụng vector similarity.
@@ -26,37 +54,34 @@ def semantic_search(query: str, top_k: int = 10) -> list[dict]:
         }
         Sorted by score descending.
     """
-    # TODO: Implement semantic search
-    #
-    # Bước 1: Embed query bằng cùng model ở Task 4
-    # Bước 2: Query vector store (cosine similarity)
-    # Bước 3: Return top_k results
-    #
-    # Ví dụ với Weaviate:
-    # import weaviate
-    # from sentence_transformers import SentenceTransformer
-    #
-    # model = SentenceTransformer("BAAI/bge-m3")
-    # query_embedding = model.encode(query).tolist()
-    #
-    # client = weaviate.connect_to_local()
-    # collection = client.collections.get("DrugLawDocs")
-    #
-    # results = collection.query.near_vector(
-    #     near_vector=query_embedding,
-    #     limit=top_k,
-    #     return_metadata=MetadataQuery(distance=True)
-    # )
-    #
-    # return [
-    #     {
-    #         "content": obj.properties["content"],
-    #         "score": 1 - obj.metadata.distance,  # distance → similarity
-    #         "metadata": {"source": obj.properties["source"], ...}
-    #     }
-    #     for obj in results.objects
-    # ]
-    raise NotImplementedError("Implement semantic_search")
+    model = get_model()
+    chunks = get_vector_store()
+    if not chunks:
+        return []
+
+    # Embed query
+    query_embedding = model.encode(query, convert_to_numpy=True)
+    query_norm = np.linalg.norm(query_embedding)
+
+    results = []
+    for chunk in chunks:
+        emb = np.array(chunk["embedding"])
+        emb_norm = np.linalg.norm(emb)
+        
+        if query_norm > 0 and emb_norm > 0:
+            score = np.dot(emb, query_embedding) / (emb_norm * query_norm)
+        else:
+            score = 0.0
+            
+        results.append({
+            "content": chunk["content"],
+            "score": float(score),
+            "metadata": chunk.get("metadata", {})
+        })
+
+    # Sort descending
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return results[:top_k]
 
 
 if __name__ == "__main__":
